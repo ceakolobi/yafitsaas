@@ -133,7 +133,7 @@ app.post('/api/v1/webhook/evolution', async (req, res) => {
     const messageText: string = msgContent?.conversation || msgContent?.extendedTextMessage?.text || msgContent?.imageMessage?.caption || '';
     if (!messageText.trim()) return;
     console.log(`[Webhook] [${instanceName}] ${pushName}: "${messageText}"`);
-    const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-bella-donna';
+    const tenantId = (req.headers['x-tenant-id'] as string) || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
     const salonContext = await buildSalonContext(tenantId);
     const salonNameMatch = salonContext.match(/SALÃO:\s*(.+)/);
     const salonName = salonNameMatch?.[1]?.trim() || 'Bella Donna';
@@ -147,7 +147,7 @@ app.post('/api/v1/webhook/evolution', async (req, res) => {
 });
 
 app.post('/api/v1/langflow/execute-tool', async (req, res) => {
-  const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-bella-donna';
+  const tenantId = (req.headers['x-tenant-id'] as string) || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   const { tool_name, input } = req.body;
   if (!tenantId) return res.status(400).json({ allowed: false, error: 'Missing x-tenant-id header.' });
   let toolOutput: Record<string, any> = {};
@@ -188,7 +188,7 @@ app.post('/api/ai/yafit-generate', async (req, res) => {
 
 // ─── WhatsApp Management ──────────────────────────────────────────────────────
 app.post('/api/v1/whatsapp/connect', async (req, res) => {
-  const tenantId = (req.headers['x-tenant-id'] as string) || req.body?.tenantId || 'tenant-bella-donna';
+  const tenantId = (req.headers['x-tenant-id'] as string) || req.body?.tenantId || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
   const webhookUrl = `${process.env.APP_URL || 'https://yafit.antum.com.br'}/api/v1/webhook/evolution`;
   try {
@@ -214,7 +214,7 @@ app.post('/api/v1/whatsapp/connect', async (req, res) => {
 });
 
 app.get('/api/v1/whatsapp/status', async (req, res) => {
-  const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || 'tenant-bella-donna';
+  const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
   try {
     const r = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, { headers: { 'apikey': EVOLUTION_API_KEY } });
@@ -226,7 +226,7 @@ app.get('/api/v1/whatsapp/status', async (req, res) => {
 });
 
 app.get('/api/v1/whatsapp/qr', async (req, res) => {
-  const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || 'tenant-bella-donna';
+  const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
   try {
     const r = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { headers: { 'apikey': EVOLUTION_API_KEY } });
@@ -236,7 +236,7 @@ app.get('/api/v1/whatsapp/qr', async (req, res) => {
 });
 
 app.delete('/api/v1/whatsapp/disconnect', async (req, res) => {
-  const tenantId = (req.headers['x-tenant-id'] as string) || req.body?.tenantId || 'tenant-bella-donna';
+  const tenantId = (req.headers['x-tenant-id'] as string) || req.body?.tenantId || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
   try {
     await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, { method: 'DELETE', headers: { 'apikey': EVOLUTION_API_KEY } });
