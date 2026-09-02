@@ -67,7 +67,7 @@ async function generateAIReply(
   clientName: string, messageText: string,
   conversationHistory: Array<{ role: string; text: string }>
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   const firstName = clientName ? clientName.split(' ')[0] : '';
   if (!apiKey) {
     return `Olá${firstName ? ', ' + firstName : ''}! 😊 Seja bem-vindo(a) ao ${salonName}! Como posso te ajudar hoje?`;
@@ -116,26 +116,24 @@ Não repita informações que você já forneceu na mesma conversa. Se o cliente
 - Varie suas respostas: "Com certeza!", "Ótima escolha!", "Perfeito!", "Que bom que entrou em contato!"
 - Nunca soe repetitivo ou mecânico.
 - Demonstre entusiasmo genuíno pelo serviço do salão.`;
-  const claudeMessages: Array<{role: string; content: string}> = [];
-  for (const h of conversationHistory.slice(-10)) {
-    claudeMessages.push({ role: h.role === 'user' ? 'user' : 'assistant', content: h.text });
-  }
-  claudeMessages.push({ role: 'user', content: clientName ? `[${clientName}] ${messageText}` : messageText });
+  const historyText = conversationHistory.length > 0
+    ? '\nHISTÓRICO:\n' + conversationHistory.slice(-6).map(h => `${h.role === 'user' ? 'Cliente' : 'Yafit'}: ${h.text}`).join('\n')
+    : '';
+  const fullPrompt = `${systemPrompt}${historyText}\nNOME DO CLIENTE: ${clientName || 'Cliente'}\nMENSAGEM: ${messageText}\nResponda naturalmente para WhatsApp:`;
   try {
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', ...(process.env.ANTHROPIC_WORKSPACE_ID ? {'anthropic-workspace-id': process.env.ANTHROPIC_WORKSPACE_ID} : {}) },
-      body: JSON.stringify({ model: 'claude-3-haiku-20240307', max_tokens: 1024, system: systemPrompt, messages: claudeMessages }),
-    });
-    const claudeData: any = await claudeRes.json();
-    if (!claudeRes.ok) {
-      console.error('[Claude API] Erro:', JSON.stringify(claudeData));
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }) }
+    );
+    const geminiData: any = await geminiRes.json();
+    if (!geminiRes.ok) {
+      console.error('[Gemini REST] Erro:', JSON.stringify(geminiData));
       return `Olá${firstName ? ', ' + firstName : ''}! 😊 Seja bem-vindo(a) ao ${salonName}! Como posso te ajudar hoje?`;
     }
-    const text = claudeData?.content?.[0]?.text?.trim();
+    const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     return text || `Olá! Como posso ajudar você hoje? ✨`;
   } catch (err: any) {
-    console.error('[Claude API] Erro de rede:', err?.message);
+    console.error('[Gemini REST] Erro de rede:', err?.message);
     return `Olá${firstName ? ', ' + firstName : ''}! 😊 Seja bem-vindo(a) ao ${salonName}! Como posso te ajudar hoje?`;
   }
 }
