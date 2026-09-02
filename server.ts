@@ -55,8 +55,8 @@ async function buildSalonContext(tenantId: string): Promise<string> {
     const services = servicesRes.data || [];
     const profs = profsRes.data || [];
     const salonName = tenant?.name || 'Salão';
-    const servicesList = services.map((s: any) => `  • ${s.name} — R$ ${Number(s.price).toFixed(2)} (${s.duration_minutes} min)`).join('\n');
-    const profsList = profs.map((p: any) => `  • ${p.name}: ${Array.isArray(p.specialties) ? p.specialties.join(', ') : p.specialties}`).join('\n');
+    const servicesList = services.map((s: any, i: number) => `${i + 1}. ${s.name} — R$ ${Number(s.price).toFixed(2)}`).join('\n');
+    const profsList = profs.map((p: any, i: number) => `${i + 1}. ${p.name} — ${Array.isArray(p.specialties) ? p.specialties.join(', ') : p.specialties}`).join('\n');
     return `SALÃO: ${salonName}\nENDEREÇO: ${tenant?.address || ''}\nHORÁRIO: ${tenant?.working_hours || 'Segunda a Sábado 9h-19h'}\n\nSERVIÇOS:\n${servicesList || '  Consulte nossa equipe.'}\n\nEQUIPE:\n${profsList || '  Profissionais qualificados.'}`.trim();
   } catch (err) { console.error('[Yafit] Erro contexto:', err); return 'Salão de beleza premium.'; }
 }
@@ -119,7 +119,9 @@ Não repita informações que você já forneceu na mesma conversa. Se o cliente
   const historyText = conversationHistory.length > 0
     ? '\nHISTÓRICO:\n' + conversationHistory.slice(-6).map(h => `${h.role === 'user' ? 'Cliente' : 'Yafit'}: ${h.text}`).join('\n')
     : '';
-  const fullPrompt = `${systemPrompt}${historyText}\nNOME DO CLIENTE: ${clientName || 'Cliente'}\nMENSAGEM: ${messageText}\nResponda naturalmente para WhatsApp:`;
+  const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  const horariosDisponiveis = '09:00, 09:30, 10:00, 10:30, 11:00, 11:30, 13:00, 13:30, 14:00, 14:30, 15:00, 15:30, 16:00, 16:30, 17:00, 17:30, 18:00, 18:30';
+  const fullPrompt = `${systemPrompt}${historyText}\nDATA DE HOJE: ${hoje}\nHORARIOS DISPONIVEIS (use estes para sugerir opcoes): ${horariosDisponiveis}\nNOME DO CLIENTE: ${clientName || 'Cliente'}\nMENSAGEM: ${messageText}\nResponda naturalmente para WhatsApp:`;
   try {
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`,
