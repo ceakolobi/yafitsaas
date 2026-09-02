@@ -138,6 +138,7 @@ Não repita informações que você já forneceu na mesma conversa. Se o cliente
   }
 }
 
+const processedMsgIds = new Set<string>();
 const conversationHistories = new Map<string, Array<{ role: string; text: string }>>();
 const MAX_HISTORY = 12;
 function getHistory(jid: string) { return conversationHistories.get(jid) || []; }
@@ -158,7 +159,15 @@ app.post('/api/v1/webhook/evolution', async (req, res) => {
     const message = data?.message || data?.messages?.[0] || data;
     const key = message?.key || data?.key;
     const instanceName = body?.instance || data?.instance || req.headers['x-instance-name'] as string || 'yafit';
-    if (key?.fromMe === true) return;
+    // Deduplicar por ID de mensagem (evita loop)
+    const msgId: string = key?.id || '';
+    if (msgId && processedMsgIds.has(msgId)) { return; }
+    if (msgId) {
+      processedMsgIds.add(msgId);
+      if (processedMsgIds.size > 2000) processedMsgIds.delete(processedMsgIds.values().next().value);
+    }
+    // Ignorar mensagens proprias (fromMe)
+    if (key?.fromMe === true || String(key?.fromMe) === 'true') return;
     const remoteJid: string = key?.remoteJid || data?.remoteJid || '';
     const pushName: string = data?.pushName || message?.pushName || 'Cliente';
     if (remoteJid.includes('@g.us')) return;
