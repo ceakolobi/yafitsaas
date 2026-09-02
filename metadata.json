@@ -1,0 +1,6 @@
+{
+  "name": "Yafit SaaS",
+  "description": "Plataforma SaaS multi-tenant e white-label de gestão completa para salões de beleza, barbearias e estética com agente IA Bia, agenda inteligente, CRM, financeiro e controle multi-unidade.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
