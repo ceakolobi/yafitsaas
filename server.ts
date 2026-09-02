@@ -122,7 +122,7 @@ Não repita informações que você já forneceu na mesma conversa. Se o cliente
   const fullPrompt = `${systemPrompt}${historyText}\nNOME DO CLIENTE: ${clientName || 'Cliente'}\nMENSAGEM: ${messageText}\nResponda naturalmente para WhatsApp:`;
   try {
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }) }
     );
     const geminiData: any = await geminiRes.json();
@@ -216,12 +216,12 @@ app.post('/api/ai/yafit-generate', async (req, res) => {
     }
     const prompt = `Você é a Yafit, assistente do salão "${tenantName || 'Salão'}".\nDados: ${salonContext || ''}\nHistórico: ${JSON.stringify(conversationHistory || [])}\nMensagem: ${message}\nResponda em português, amigável e curto:`;
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
     );
     const geminiData: any = await geminiRes.json();
     const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Olá! Como posso ajudar?';
-    res.json({ success: true, source: 'gemini-1.5-flash', reply });
+    res.json({ success: true, source: 'gemini-2.5-flash', reply });
   } catch (error: any) {
     console.error('Error generating AI response:', error);
     res.status(500).json({ success: false, error: error?.message, fallbackReply: 'Olá! Como posso te ajudar hoje?' });
