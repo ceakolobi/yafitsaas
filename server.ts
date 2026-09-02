@@ -124,7 +124,7 @@ Não repita informações que você já forneceu na mesma conversa. Se o cliente
   try {
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', ...(process.env.ANTHROPIC_WORKSPACE_ID ? {'anthropic-workspace-id': process.env.ANTHROPIC_WORKSPACE_ID} : {}) },
       body: JSON.stringify({ model: 'claude-3-haiku-20240307', max_tokens: 1024, system: systemPrompt, messages: claudeMessages }),
     });
     const claudeData: any = await claudeRes.json();
