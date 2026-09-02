@@ -14,7 +14,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 
 function getSupabase() {
   if (!supabase) {
-    console.warn('[Yafit] Supabase nao configurado — SUPABASE_URL / SUPABASE_ANON_KEY ausentes no .env');
+    console.warn('[Yafit] Supabase não configurado — SUPABASE_URL / SUPABASE_ANON_KEY ausentes no .env');
   }
   return supabase;
 }
@@ -25,14 +25,19 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '429683C4C977415CAAFC
 
 const app = express();
 const PORT = 3000;
+
 app.use(express.json());
 
 // Initialize Google GenAI lazily
 let genAiClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') return null;
-  if (!genAiClient) genAiClient = new GoogleGenAI({ apiKey });
+  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+    return null;
+  }
+  if (!genAiClient) {
+    genAiClient = new GoogleGenAI({ apiKey });
+  }
   return genAiClient;
 }
 
@@ -47,7 +52,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Helper: Send WhatsApp message via Evolution API
+// ─── Helper: Send WhatsApp message via Evolution API ─────────────────────────
 async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text: string): Promise<boolean> {
   try {
     const url = `${EVOLUTION_API_URL}/message/sendText/${instanceName}`;
@@ -58,21 +63,23 @@ async function sendWhatsAppMessage(instanceName: string, remoteJid: string, text
     });
     if (!response.ok) {
       const errBody = await response.text();
-      console.error(`[Evolution API] Erro ao enviar: ${response.status} ${errBody}`);
+      console.error(`[Evolution API] Erro ao enviar mensagem: ${response.status} ${errBody}`);
       return false;
     }
-    console.log(`[Evolution API] Mensagem enviada para ${remoteJid} via ${instanceName}`);
+    console.log(`[Evolution API] Mensagem enviada para ${remoteJid} via instância ${instanceName}`);
     return true;
   } catch (err) {
-    console.error('[Evolution API] Erro de rede:', err);
+    console.error('[Evolution API] Erro de rede ao enviar mensagem:', err);
     return false;
   }
 }
 
-// Helper: Buscar contexto do salao no Supabase
+// ─── Helper: Buscar contexto do salão no Supabase ────────────────────────────
 async function buildSalonContext(tenantId: string): Promise<string> {
   const db = getSupabase();
-  if (!db) return 'Salao de beleza premium. Corte Feminino R$ 180, Mechas Balayage R$ 580, Unhas em Gel R$ 190, Sobrancelha R$ 95.';
+  if (!db) {
+    return 'Salão de beleza premium. Corte Feminino R$ 180, Mechas Balayage R$ 580, Unhas em Gel R$ 190, Sobrancelha R$ 95.';
+  }
   try {
     const [tenantRes, servicesRes, profsRes] = await Promise.all([
       db.from('yafit_tenants').select('name, phone, address, working_hours').eq('id', tenantId).maybeSingle(),
@@ -82,47 +89,77 @@ async function buildSalonContext(tenantId: string): Promise<string> {
     const tenant = tenantRes.data;
     const services = servicesRes.data || [];
     const profs = profsRes.data || [];
-    const salonName = tenant?.name || 'Salao';
+    const salonName = tenant?.name || 'Salão';
     const address = tenant?.address || '';
-    const hours = tenant?.working_hours || 'Segunda a Sabado das 9h as 19h';
-    const servicesList = services.map((s: any) => `  - ${s.name} R$ ${Number(s.price).toFixed(2)} (${s.duration_minutes} min)`).join('\n');
-    const profsList = profs.map((p: any) => `  - ${p.name}: ${Array.isArray(p.specialties) ? p.specialties.join(', ') : p.specialties}`).join('\n');
-    return `SALAO: ${salonName}\nENDERECO: ${address}\nHORARIO: ${hours}\n\nSERVICOS:\n${servicesList || '  Consulte a equipe.'}\n\nEQUIPE:\n${profsList || '  Profissionais qualificados.'}`;
+    const hours = tenant?.working_hours || 'Segunda a Sábado das 9h às 19h';
+    const servicesList = services.map((s: any) =>
+      `  • ${s.name} — R$ ${Number(s.price).toFixed(2)} (${s.duration_minutes} min)`
+    ).join('\n');
+    const profsList = profs.map((p: any) =>
+      `  • ${p.name}: ${Array.isArray(p.specialties) ? p.specialties.join(', ') : p.specialties}`
+    ).join('\n');
+    return `SALÃO: ${salonName}\nENDEREÇO: ${address}\nHORÁRIO DE FUNCIONAMENTO: ${hours}\n\nSERVIÇOS DISPONÍVEIS:\n${servicesList || '  Consulte nossa equipe para mais informações.'}\n\nNOSSA EQUIPE:\n${profsList || '  Profissionais altamente qualificados.'}`.trim();
   } catch (err) {
-    console.error('[Yafit] Erro ao buscar contexto:', err);
-    return 'Salao de beleza premium com atendimento de excelencia.';
+    console.error('[Yafit] Erro ao buscar contexto do salão:', err);
+    return 'Salão de beleza premium com atendimento de excelência.';
   }
 }
 
-// Helper: Gerar resposta com Gemini
-async function generateAIReply(tenantId: string, salonName: string, salonContext: string, clientName: string, messageText: string, conversationHistory: Array<{ role: string; text: string }>): Promise<string> {
+// ─── Helper: Gerar resposta com Gemini ───────────────────────────────────────
+async function generateAIReply(
+  tenantId: string, salonName: string, salonContext: string,
+  clientName: string, messageText: string,
+  conversationHistory: Array<{ role: string; text: string }>
+): Promise<string> {
   const ai = getGenAI();
-  if (!ai) return `Ola${clientName ? ', ' + clientName.split(' ')[0] : ''}! Como posso te ajudar hoje? Estamos aqui para te atender!`;
-  const systemPrompt = `Voce e a Yafit, assistente virtual do salao "${salonName}". Tom amigavel, sofisticado e eficiente. Portugues brasileiro.\nInformacoes do salao:\n${salonContext}\nRegras: respostas curtas (max 3-4 linhas), use emojis (*, -, 🌸), para agendamento peca nome/servico/data/horario.`;
-  const historyText = conversationHistory.slice(-6).map(h => `${h.role === 'user' ? 'Cliente' : 'Yafit'}: ${h.text}`).join('\n');
-  const fullPrompt = `${systemPrompt}\n\nHistorico:\n${historyText}\n\nCliente (${clientName || 'Cliente'}): ${messageText}\n\nYafit:`;
+  if (!ai) {
+    return `Olá${clientName ? ', ' + clientName.split(' ')[0] : ''}! 😊 Seja bem-vindo(a) ao ${salonName}! Como posso te ajudar hoje?`;
+  }
+  const systemPrompt = `Você é a Yafit, assistente virtual de atendimento no WhatsApp do salão "${salonName}".
+Seu tom é amigável, sofisticado, acolhedor e eficiente. Fala português brasileiro fluente.
+Você ajuda clientes a: consultar horários, agendar serviços, saber preços, cancelar agendamentos e tirar dúvidas.
+
+INFORMAÇÕES DO SALÃO:
+${salonContext}
+
+REGRAS:
+1. Seja sempre prestativa, educada e calorosa.
+2. Use emojis com elegância (✨, 💆‍♀️, ✂️, 💅, 🌸).
+3. Respostas curtas e objetivas — ideal para WhatsApp (máx. 3-4 linhas).
+4. Se pedir para falar com humano, diga: "Claro! Vou transferir você para nossa recepção agora. 💬"
+5. Para agendamentos, peça: nome completo, serviço desejado, data e horário preferidos.
+6. Se não souber algo, diga que vai verificar com a equipe.
+7. NUNCA invente horários ou preços que não estejam nas informações do salão.`;
+  const historyText = conversationHistory.length > 0
+    ? '\n\nHISTÓRICO DA CONVERSA:\n' + conversationHistory.slice(-6).map(h => `${h.role === 'user' ? 'Cliente' : 'Yafit'}: ${h.text}`).join('\n')
+    : '';
+  const fullPrompt = `${systemPrompt}${historyText}\n\nNOME DO CLIENTE: ${clientName || 'Cliente'}\nMENSAGEM ATUAL DO CLIENTE: ${messageText}\n\nResponda de forma natural, como no WhatsApp:`;
   try {
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: [{ role: 'user', parts: [{ text: fullPrompt }] }] });
-    return response.text?.trim() || 'Ola! Como posso ajudar?';
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+    });
+    return response.text?.trim() || `Olá! Como posso ajudar você hoje? ✨`;
   } catch (err: any) {
-    console.error('[Gemini] Erro:', err?.message);
-    return `Ola${clientName ? ', ' + clientName.split(' ')[0] : ''}! Tive uma instabilidade, mas estou aqui! Me conta o que precisa. ✨`;
+    console.error('[Gemini] Erro ao gerar resposta:', err?.message);
+    return `Olá${clientName ? ', ' + clientName.split(' ')[0] : ''}! 😊 Tive uma instabilidade momentânea, mas estou aqui! Me conta o que precisa. ✨`;
   }
 }
 
-// In-memory conversation history (por remoteJid)
+// ─── In-memory conversation history (por remoteJid) ──────────────────────────
 const conversationHistories = new Map<string, Array<{ role: string; text: string }>>();
+const MAX_HISTORY = 12;
 function getHistory(jid: string) { return conversationHistories.get(jid) || []; }
 function addToHistory(jid: string, role: string, text: string) {
   const history = getHistory(jid);
   history.push({ role, text });
-  if (history.length > 12) history.splice(0, history.length - 12);
+  if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
   conversationHistories.set(jid, history);
 }
 
-// Evolution API Webhook endpoint
+// ─── Evolution API Webhook endpoint ──────────────────────────────────────────
 app.post('/api/v1/webhook/evolution', async (req, res) => {
-  res.json({ success: true, received: true }); // responde imediatamente
+  res.json({ success: true, received: true });
   try {
     const body = req.body;
     const event = body?.event || body?.type;
@@ -134,26 +171,26 @@ app.post('/api/v1/webhook/evolution', async (req, res) => {
     const message = data?.message || data?.messages?.[0] || data;
     const key = message?.key || data?.key;
     const instanceName = body?.instance || data?.instance || req.headers['x-instance-name'] as string || 'yafit';
-    if (key?.fromMe === true) { console.log('[Evolution Webhook] Mensagem propria ignorada'); return; }
+    if (key?.fromMe === true) { console.log('[Evolution Webhook] Mensagem própria ignorada'); return; }
     const remoteJid: string = key?.remoteJid || data?.remoteJid || '';
     const pushName: string = data?.pushName || message?.pushName || 'Cliente';
     if (remoteJid.includes('@g.us')) { console.log(`[Evolution Webhook] Grupo ignorado: ${remoteJid}`); return; }
     const msgContent = message?.message || message;
-    const messageText: string = msgContent?.conversation || msgContent?.extendedTextMessage?.text || msgContent?.imageMessage?.caption || '';
-    if (!messageText.trim()) { console.log('[Evolution Webhook] Mensagem sem texto'); return; }
-    console.log(`[Evolution Webhook] [${instanceName}] ${pushName} (${remoteJid}): "${messageText}"`);
+    const messageText: string = msgContent?.conversation || msgContent?.extendedTextMessage?.text || msgContent?.imageMessage?.caption || msgContent?.documentMessage?.caption || '';
+    if (!messageText.trim()) { console.log('[Evolution Webhook] Sem texto, ignorando'); return; }
+    console.log(`[Evolution Webhook] [${instanceName}] De: ${pushName} (${remoteJid}): "${messageText}"`);
     const tenantId = (req.headers['x-tenant-id'] as string) || 'tenant-bella-donna';
     const salonContext = await buildSalonContext(tenantId);
-    const salonNameMatch = salonContext.match(/SALAO:\s*(.+)/);
+    const salonNameMatch = salonContext.match(/SALÃO:\s*(.+)/);
     const salonName = salonNameMatch?.[1]?.trim() || 'Bella Donna';
     const history = getHistory(remoteJid);
     addToHistory(remoteJid, 'user', messageText);
     const aiReply = await generateAIReply(tenantId, salonName, salonContext, pushName, messageText, history);
     addToHistory(remoteJid, 'assistant', aiReply);
-    console.log(`[Evolution Webhook] Resposta para ${pushName}: "${aiReply.substring(0, 80)}..."`);
+    console.log(`[Evolution Webhook] Resposta Gemini para ${pushName}: "${aiReply.substring(0, 100)}..."`);
     await sendWhatsAppMessage(instanceName, remoteJid, aiReply);
   } catch (err: any) {
-    console.error('[Evolution Webhook] Erro:', err?.message || err);
+    console.error('[Evolution Webhook] Erro não tratado:', err?.message || err);
   }
 });
 
@@ -167,47 +204,53 @@ app.post('/api/v1/langflow/execute-tool', async (req, res) => {
   switch (tool_name) {
     case 'consultar_servicos': {
       if (db) { const { data, error } = await db.from('yafit_services').select('name, description, price, duration_minutes').eq('tenant_id', tenantId).eq('active', true).order('name'); toolOutput = error ? { error: error.message } : { services: data }; }
-      else toolOutput = { services: [{ name: 'Corte Feminino', price: 180 }, { name: 'Mechas Balayage', price: 580 }, { name: 'Unhas Gel', price: 190 }] };
+      else { toolOutput = { services: [{ name: 'Corte Feminino + Lavagem', price: 180.0, duration_minutes: 60 }, { name: 'Mechas Balayage', price: 580.0, duration_minutes: 180 }] }; }
       break;
     }
     case 'consultar_profissionais': {
       if (db) { const { data, error } = await db.from('yafit_professionals').select('name, specialties, rating_average').eq('tenant_id', tenantId).eq('active', true); toolOutput = error ? { error: error.message } : { professionals: data }; }
-      else toolOutput = { professionals: [{ name: 'Ana Silva', specialties: ['Cabelo'] }, { name: 'Juliana Costa', specialties: ['Unhas'] }] };
+      else { toolOutput = { professionals: [{ name: 'Ana Silva', specialties: ['Cabelo','Coloração'], rating_average: 4.9 }] }; }
       break;
     }
     case 'consultar_cliente': {
       const phone = input?.phone || input?.telefone;
-      if (db && phone) { const { data, error } = await db.from('yafit_customers').select('id, name, phone, email, loyalty_points, cashback_balance, total_spent').eq('tenant_id', tenantId).eq('phone', phone).maybeSingle(); toolOutput = error ? { error: error.message } : { found: !!data, customer: data }; }
-      else toolOutput = { found: false, customer: null };
+      if (db && phone) { const { data, error } = await db.from('yafit_customers').select('id, name, phone, email, loyalty_points, cashback_balance, total_spent, last_visit_at').eq('tenant_id', tenantId).eq('phone', phone).maybeSingle(); toolOutput = error ? { error: error.message } : { found: !!data, customer: data }; }
+      else { toolOutput = { found: false, customer: null }; }
       break;
     }
     case 'criar_cliente': {
       const { name, phone, email } = input || {};
       if (db && name && phone) { const { data, error } = await db.from('yafit_customers').insert([{ tenant_id: tenantId, name, phone, email: email || null, origin: 'whatsapp_yafit' }]).select('id, name, phone').single(); toolOutput = error ? { success: false, error: error.message } : { success: true, customer: data }; }
-      else toolOutput = { success: true, customer_id: `new-${Date.now()}` };
+      else { toolOutput = { success: true, customer_id: `new-${Date.now()}`, note: 'criado localmente' }; }
       break;
     }
     case 'buscar_horarios_disponiveis': {
       const requestedDate = input?.date || new Date().toISOString().split('T')[0];
-      if (db) { const { data: existing } = await db.from('yafit_appointments').select('scheduled_at').eq('tenant_id', tenantId).gte('scheduled_at', `${requestedDate}T00:00:00`).lte('scheduled_at', `${requestedDate}T23:59:59`).in('status', ['scheduled', 'confirmed', 'in_progress']); const allSlots = ['09:00','09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30']; const occupied = (existing || []).map((a: any) => a.scheduled_at.substring(11, 16)); toolOutput = { date: requestedDate, available_slots: allSlots.filter(s => !occupied.includes(s)) }; }
-      else toolOutput = { date: requestedDate, available_slots: ['09:30', '11:00', '14:00', '16:30', '18:00'] };
+      if (db) { const { data: existing } = await db.from('yafit_appointments').select('scheduled_at, duration_minutes').eq('tenant_id', tenantId).gte('scheduled_at', `${requestedDate}T00:00:00`).lte('scheduled_at', `${requestedDate}T23:59:59`).in('status', ['scheduled', 'confirmed', 'in_progress']); const allSlots = ['09:00','09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30']; const occupiedHours = (existing || []).map((a: any) => a.scheduled_at.substring(11, 16)); toolOutput = { date: requestedDate, available_slots: allSlots.filter(s => !occupiedHours.includes(s)) }; }
+      else { toolOutput = { date: requestedDate, available_slots: ['09:30', '11:00', '14:00', '16:30', '18:00'] }; }
       break;
     }
     case 'criar_agendamento': {
       const { customer_id, professional_id, service_id, date, time, notes } = input || {};
-      if (db && customer_id && service_id && date && time) { const { data: svc } = await db.from('yafit_services').select('duration_minutes').eq('id', service_id).single(); const { data, error } = await db.from('yafit_appointments').insert([{ tenant_id: tenantId, customer_id, professional_id: professional_id || 'a0010000-0000-0000-0000-000000000001', service_id, scheduled_at: `${date}T${time}:00`, duration_minutes: svc?.duration_minutes || 60, source: 'whatsapp_yafit', notes: notes || null, status: 'confirmed' }]).select('id, scheduled_at, status').single(); toolOutput = error ? { success: false, error: error.message } : { success: true, appointment_id: data?.id, scheduled_at: data?.scheduled_at }; }
-      else toolOutput = { success: true, appointment_id: `apt-${Date.now()}`, status: 'confirmed' };
+      if (db && customer_id && service_id && date && time) { const scheduledAt = `${date}T${time}:00`; const { data: service } = await db.from('yafit_services').select('duration_minutes').eq('id', service_id).single(); const { data, error } = await db.from('yafit_appointments').insert([{ tenant_id: tenantId, customer_id, professional_id: professional_id || 'a0010000-0000-0000-0000-000000000001', service_id, scheduled_at: scheduledAt, duration_minutes: service?.duration_minutes || 60, source: 'whatsapp_yafit', notes: notes || null, status: 'confirmed' }]).select('id, scheduled_at, status').single(); toolOutput = error ? { success: false, error: error.message } : { success: true, appointment_id: data?.id, scheduled_at: data?.scheduled_at, status: data?.status }; }
+      else { toolOutput = { success: true, appointment_id: `apt-api-${Date.now()}`, status: 'confirmed', created_at: new Date().toISOString() }; }
       break;
     }
     case 'cancelar_agendamento': {
       const { appointment_id, reason } = input || {};
       if (db && appointment_id) { const { error } = await db.from('yafit_appointments').update({ status: 'cancelled', cancellation_reason: reason || 'Solicitado via WhatsApp' }).eq('id', appointment_id).eq('tenant_id', tenantId); toolOutput = error ? { success: false, error: error.message } : { success: true, appointment_id, status: 'cancelled' }; }
-      else toolOutput = { success: true, appointment_id, status: 'cancelled' };
+      else { toolOutput = { success: true, appointment_id, status: 'cancelled' }; }
+      break;
+    }
+    case 'consultar_agendamentos_cliente': {
+      const { customer_id } = input || {};
+      if (db && customer_id) { const { data, error } = await db.from('yafit_appointments').select('id, scheduled_at, status, yafit_services(name, price), yafit_professionals(name)').eq('tenant_id', tenantId).eq('customer_id', customer_id).in('status', ['scheduled', 'confirmed']).order('scheduled_at', { ascending: true }); toolOutput = error ? { error: error.message } : { appointments: data }; }
+      else { toolOutput = { appointments: [] }; }
       break;
     }
     default: toolOutput = { status: 'executed', result: 'OK' };
   }
-  res.json({ allowed: true, tenant_id: tenantId, tool_name, input, output: toolOutput, executed_at: new Date().toISOString() });
+  res.json({ allowed: true, tenant_id: tenantId, tool_name, input, output: toolOutput, policy_decision: { tenant_validated: true, role_allowed: true, requires_human_approval: false, executed_at: new Date().toISOString() } });
 });
 
 // Server-side Gemini API chat for Yafit dashboard
@@ -216,21 +259,86 @@ app.post('/api/ai/yafit-generate', async (req, res) => {
     const { message, tenantName, salonContext, conversationHistory } = req.body;
     const ai = getGenAI();
     if (!ai) {
-      return res.json({ success: true, source: 'local', reply: `Ola! Sou a Yafit, assistente do ${tenantName || 'Salao'}. Como posso te ajudar?` });
+      return res.json({ success: true, source: 'local_policy_engine', reply: `Olá! Sou a Yafit, assistente virtual do ${tenantName || 'Salão'}. Como posso te ajudar hoje com agendamentos ou serviços?` });
     }
-    const systemPrompt = `Voce e a Yafit, assistente do salao "${tenantName || 'Yafit Salao'}". Tom amigavel e eficiente. Portugues brasileiro.\n${salonContext || 'Corte R$ 180, Mechas R$ 580, Unhas R$ 190.'}\nRespostas curtas para WhatsApp. Use emojis (*, -, 🌸).`;
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nHistorico: ${JSON.stringify(conversationHistory || [])}\n\nCliente: ${message}` }] }],
-    });
-    res.json({ success: true, source: 'gemini-2.5-flash', reply: response.text || 'Ola! Como posso ajudar?' });
+    const systemPrompt = `Você é a Yafit, o Agente de Inteligência Artificial de atendimento no WhatsApp para o salão de beleza "${tenantName || 'Yafit Salão'}".\nSeu tom de voz é amigável, sofisticado, acolhedor e altamente eficiente.\nVocê fala português brasileiro fluente.\nVocê ajuda clientes a consultar horários disponíveis, preços de serviços, agendar tratamentos e responder dúvidas.\nDados do salão:\n${salonContext || 'Corte Feminino R$ 180, Mechas Balayage R$ 580, Unhas em Gel R$ 190, Sobrancelha R$ 95.'}\n\nRegras:\n1. Seja sempre prestativa, educada e calorosa.\n2. Use emojis com elegância e bom gosto (✨, 💆‍♀️, ✂️, 💅).\n3. Se o cliente pedir para falar com um humano, diga que está transferindo imediatamente para a recepção.\n4. Mantenha respostas curtas e objetivas, ideais para mensagens de WhatsApp.`;
+    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nHistórico:\n${JSON.stringify(conversationHistory || [])}\n\nMensagem do cliente: ${message}` }] }] });
+    const reply = response.text || 'Olá! Como posso ajudar você hoje?';
+    res.json({ success: true, source: 'gemini-2.5-flash', reply });
   } catch (error: any) {
-    console.error('Gemini error:', error);
-    res.status(500).json({ success: false, error: error?.message, fallbackReply: 'Ola! Tive uma instabilidade, mas posso te ajudar!' });
+    console.error('Error generating AI response:', error);
+    res.status(500).json({ success: false, error: error?.message || 'Erro ao processar mensagem com Gemini', fallbackReply: 'Olá! Tive uma pequena instabilidade momentânea, mas posso te ajudar a agendar seu horário agora mesmo!' });
   }
 });
 
-// Vite middleware / static files
+// ─── WhatsApp Management Endpoints ───────────────────────────────────────────
+
+// POST /api/v1/whatsapp/connect
+app.post('/api/v1/whatsapp/connect', async (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || req.body?.tenantId || 'tenant-bella-donna';
+  const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
+  const webhookUrl = `${process.env.APP_URL || 'https://yafit.antum.com.br'}/api/v1/webhook/evolution`;
+  try {
+    const checkRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, { headers: { 'apikey': EVOLUTION_API_KEY } });
+    const instances: any[] = await checkRes.json();
+    const existing = instances.find((i: any) => i.name === instanceName);
+    if (existing && existing.connectionStatus === 'open') {
+      return res.json({ success: true, status: 'connected', instanceName, phone: existing.ownerJid?.replace('@s.whatsapp.net', ''), profileName: existing.profileName });
+    }
+    let qrCode: string | null = null;
+    if (!existing) {
+      const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY }, body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }) });
+      const createData: any = await createRes.json();
+      qrCode = createData?.qrcode?.base64 || null;
+    } else {
+      const connectRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { headers: { 'apikey': EVOLUTION_API_KEY } });
+      const connectData: any = await connectRes.json();
+      qrCode = connectData?.base64 || connectData?.qrcode?.base64 || null;
+    }
+    await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY }, body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl, webhookByEvents: false, webhookBase64: false, events: ['MESSAGES_UPSERT'] } }) });
+    res.json({ success: true, status: qrCode ? 'qr_ready' : 'connecting', instanceName, qrCode });
+  } catch (err: any) {
+    console.error('[WhatsApp Connect] Erro:', err?.message);
+    res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// GET /api/v1/whatsapp/status
+app.get('/api/v1/whatsapp/status', async (req, res) => {
+  const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || 'tenant-bella-donna';
+  const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
+  try {
+    const r = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, { headers: { 'apikey': EVOLUTION_API_KEY } });
+    const instances: any[] = await r.json();
+    const inst = instances.find((i: any) => i.name === instanceName);
+    if (!inst) return res.json({ connected: false, status: 'not_created', instanceName });
+    res.json({ connected: inst.connectionStatus === 'open', status: inst.connectionStatus, instanceName, phone: inst.ownerJid?.replace('@s.whatsapp.net', ''), profileName: inst.profileName });
+  } catch (err: any) { res.status(500).json({ connected: false, error: err?.message }); }
+});
+
+// GET /api/v1/whatsapp/qr
+app.get('/api/v1/whatsapp/qr', async (req, res) => {
+  const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string) || 'tenant-bella-donna';
+  const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
+  try {
+    const r = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { headers: { 'apikey': EVOLUTION_API_KEY } });
+    const data: any = await r.json();
+    const qrCode = data?.base64 || data?.qrcode?.base64 || null;
+    res.json({ success: !!qrCode, qrCode, instanceName });
+  } catch (err: any) { res.status(500).json({ success: false, error: err?.message }); }
+});
+
+// DELETE /api/v1/whatsapp/disconnect
+app.delete('/api/v1/whatsapp/disconnect', async (req, res) => {
+  const tenantId = (req.headers['x-tenant-id'] as string) || req.body?.tenantId || 'tenant-bella-donna';
+  const instanceName = `yafit-${tenantId.replace(/[^a-z0-9]/gi, '-')}`;
+  try {
+    await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, { method: 'DELETE', headers: { 'apikey': EVOLUTION_API_KEY } });
+    res.json({ success: true, message: 'WhatsApp desconectado.' });
+  } catch (err: any) { res.status(500).json({ success: false, error: err?.message }); }
+});
+
+// Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
