@@ -136,7 +136,7 @@ REGRAS:
   const fullPrompt = `${systemPrompt}${historyText}\n\nNOME DO CLIENTE: ${clientName || 'Cliente'}\nMENSAGEM ATUAL DO CLIENTE: ${messageText}\n\nResponda de forma natural, como no WhatsApp:`;
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
     });
     return response.text?.trim() || `Olá! Como posso ajudar você hoje? ✨`;
@@ -262,9 +262,9 @@ app.post('/api/ai/yafit-generate', async (req, res) => {
       return res.json({ success: true, source: 'local_policy_engine', reply: `Olá! Sou a Yafit, assistente virtual do ${tenantName || 'Salão'}. Como posso te ajudar hoje com agendamentos ou serviços?` });
     }
     const systemPrompt = `Você é a Yafit, o Agente de Inteligência Artificial de atendimento no WhatsApp para o salão de beleza "${tenantName || 'Yafit Salão'}".\nSeu tom de voz é amigável, sofisticado, acolhedor e altamente eficiente.\nVocê fala português brasileiro fluente.\nVocê ajuda clientes a consultar horários disponíveis, preços de serviços, agendar tratamentos e responder dúvidas.\nDados do salão:\n${salonContext || 'Corte Feminino R$ 180, Mechas Balayage R$ 580, Unhas em Gel R$ 190, Sobrancelha R$ 95.'}\n\nRegras:\n1. Seja sempre prestativa, educada e calorosa.\n2. Use emojis com elegância e bom gosto (✨, 💆‍♀️, ✂️, 💅).\n3. Se o cliente pedir para falar com um humano, diga que está transferindo imediatamente para a recepção.\n4. Mantenha respostas curtas e objetivas, ideais para mensagens de WhatsApp.`;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nHistórico:\n${JSON.stringify(conversationHistory || [])}\n\nMensagem do cliente: ${message}` }] }] });
+    const response = await ai.models.generateContent({ model: 'gemini-1.5-flash', contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nHistórico:\n${JSON.stringify(conversationHistory || [])}\n\nMensagem do cliente: ${message}` }] }] });
     const reply = response.text || 'Olá! Como posso ajudar você hoje?';
-    res.json({ success: true, source: 'gemini-2.5-flash', reply });
+    res.json({ success: true, source: 'gemini-1.5-flash', reply });
   } catch (error: any) {
     console.error('Error generating AI response:', error);
     res.status(500).json({ success: false, error: error?.message || 'Erro ao processar mensagem com Gemini', fallbackReply: 'Olá! Tive uma pequena instabilidade momentânea, mas posso te ajudar a agendar seu horário agora mesmo!' });
